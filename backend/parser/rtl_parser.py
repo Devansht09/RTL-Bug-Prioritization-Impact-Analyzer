@@ -255,8 +255,14 @@ class PyVerilogParser:
             ) as f:
                 f.write(code)
                 tmp_path = f.name
-            # File is now closed — PyVerilog can open it on Windows
-            ast, _ = vparser.parse([tmp_path])
+            # Avoid Read-Only File System on Vercel Serverless by writing parser tabs to /tmp
+            import tempfile
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tempfile.gettempdir())
+                ast, _ = vparser.parse([tmp_path])
+            finally:
+                os.chdir(old_cwd)
             self._walk(ast, rep)
         except Exception as e:
             logger.warning(f"PyVerilog parse failed: {e}")
