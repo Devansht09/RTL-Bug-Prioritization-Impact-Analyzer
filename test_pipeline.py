@@ -1,42 +1,37 @@
 import sys, io
 sys.path.insert(0, '.')
-
-# Capture stderr (PyVerilog LALR noise)
-_old_stderr = sys.stderr
 sys.stderr = io.StringIO()
 
 from backend.pipeline import run_pipeline
+sys.stderr = io.StringIO()
 
 code = open('examples/simple_alu.v', encoding='utf-8').read()
 result = run_pipeline(code)
+sys.stderr = sys.__stderr__
 
-sys.stderr = _old_stderr
-
-print('=== PARSE INFO ===')
-print('  Parse method :', result['parse_info']['method'])
-print('  Modules      :', result['parse_info']['modules'])
-print('  Signals      :', result['parse_info']['signal_count'])
-print('  Assignments  :', result['parse_info']['assignment_count'])
-print('  Always blocks:', result['parse_info']['always_block_count'])
-print()
-print('=== SUMMARY ===')
+lines = []
+lines.append("=== PARSE INFO ===")
+lines.append(f"  Modules: {result['parse_info']['modules']}")
+lines.append(f"  Signals: {result['parse_info']['signal_count']}")
+lines.append("")
+lines.append("=== SUMMARY ===")
 s = result['summary']
-print(f"  Total: {s['total']}  High: {s['high']}  Medium: {s['medium']}  Low: {s['low']}")
-print()
-print('=== ALL ISSUES (ranked) ===')
+lines.append(f"  Total={s['total']}  High={s['high']}  Medium={s['medium']}  Low={s['low']}")
+lines.append("")
+lines.append("=== ALL ISSUES (ranked) ===")
 for r in result['results']:
-    p = ' -> '.join(r['signal_path']) if r['signal_path'] else 'no output path'
-    print(f"  #{r['rank']:02d} [{r['severity_label']:6}] {r['signal']:<22} "
-          f"score={r['final_score']:.3f}  type={r['bug_type']}")
-    print(f"       path: {p}")
-print()
-print('=== GRAPH ===')
+    path = ' -> '.join(r['signal_path']) if r['signal_path'] else 'no output path'
+    lines.append(f"  #{r['rank']:02d} [{r['severity_label']:6}] {r['signal']:<22} score={r['final_score']:.3f}  reach={r['reach_output']}  depth={r['propagation_depth']}  fanout={r['fanout_count']}")
+    lines.append(f"         path: {path}")
+
+lines.append("")
+lines.append("=== GRAPH ===")
 gs = result['graph_stats']
-print(f"  Nodes: {gs.get('nodes')}  Edges: {gs.get('edges')}  "
-      f"DAG: {gs.get('is_dag')}  Components: {gs.get('weakly_connected_components')}")
-print()
-print('=== TIMING (ms) ===')
-for k, v in result['timing_ms'].items():
-    print(f"  {k}: {v}ms")
-print()
-print('✅ Pipeline smoke test PASSED!')
+lines.append(f"  Nodes={gs.get('nodes')}  Edges={gs.get('edges')}")
+lines.append("")
+lines.append("DONE")
+
+with open('test_output.txt', 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines))
+
+print("Written to test_output.txt")

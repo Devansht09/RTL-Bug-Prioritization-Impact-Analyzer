@@ -57,7 +57,13 @@ def _rule_score(impact: GraphImpact, issue: Issue) -> float:
     reach = 1.0 if impact.reach_output else 0.0
 
     depth = impact.propagation_depth
-    depth_score = 1.0 / depth if (0 < depth < 999) else 0.0
+    if depth == 0:
+        # Bug IS directly on an output port — maximum urgency
+        depth_score = 1.0
+    elif 0 < depth < 999:
+        depth_score = 1.0 / depth
+    else:
+        depth_score = 0.0
 
     fanout_norm = min(impact.fanout_count / 20.0, 1.0)
 

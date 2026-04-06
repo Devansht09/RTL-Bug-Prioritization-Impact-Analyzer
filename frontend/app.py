@@ -395,8 +395,48 @@ st.markdown("""
     color: #93c5fd;
   }
 
-  /* hide default streamlit header/footer */
-  #MainMenu, footer, header { visibility: hidden; }
+  /* Hide Streamlit header bar entirely (white box killer) */
+  header[data-testid="stHeader"] {
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+  #MainMenu, footer { visibility: hidden; }
+
+  /* Pull the sidebar toggle out of the now-zero-height header
+     and make it float visibly on the left edge */
+  [data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    position: fixed !important;
+    top: 50% !important;
+    left: 0 !important;
+    transform: translateY(-50%) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-bright) !important;
+    border-left: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    color: var(--text-secondary) !important;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.5) !important;
+    z-index: 9999 !important;
+    padding: 8px 4px !important;
+  }
+  [data-testid="collapsedControl"]:hover {
+    background: var(--bg-card-hover) !important;
+    border-color: rgba(59,130,246,0.6) !important;
+    box-shadow: 3px 0 16px rgba(59,130,246,0.3) !important;
+  }
+  [data-testid="collapsedControl"] svg {
+    fill: var(--text-secondary) !important;
+  }
+
+  /* Sidebar's own collapse button stays visible */
+  [data-testid="stSidebarCollapseButton"] {
+    visibility: visible !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 

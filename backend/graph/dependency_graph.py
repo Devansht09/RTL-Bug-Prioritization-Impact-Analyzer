@@ -107,6 +107,10 @@ class DependencyGraph:
         """
         Run BFS from start_signal.
         Returns GraphImpact with reachability metrics.
+
+        Key fix: if the start_signal itself IS an output port, we
+        immediately record reach_output=True with propagation_depth=0
+        (the bug is ON the output — worst case scenario).
         """
         G = self.graph
 
@@ -118,12 +122,17 @@ class DependencyGraph:
                 fanout_count=0,
             )
 
+        # --- Check if the bug signal itself is an output ---
+        start_is_output = (
+            G.nodes[start_signal].get("is_output", False)
+            or start_signal in self.outputs
+        )
+
         # BFS
         visited: Set[str] = set()
         queue: deque = deque([(start_signal, 0)])
         visited.add(start_signal)
 
-        # Track path to nearest output using predecessor map
         predecessor: Dict[str, Optional[str]] = {start_signal: None}
         depth_map: Dict[str, int] = {start_signal: 0}
 
@@ -131,21 +140,28 @@ class DependencyGraph:
         nearest_depth: int = 999
         affected_outputs: List[str] = []
 
+        # If start is itself an output, record it immediately
+        if start_is_output:
+            affected_outputs.append(start_signal)
+            nearest_depth = 0
+            nearest_output = start_signal
+
         while queue:
             node, depth = queue.popleft()
 
-            # Check if this is an output node
+            # Check downstream nodes for output reachability
             is_output = (
                 G.nodes[node].get("is_output", False)
                 or node in self.outputs
             )
+            # Count downstream outputs (not the start node — already handled above)
             if is_output and node != start_signal:
-                affected_outputs.append(node)
+                if node not in affected_outputs:
+                    affected_outputs.append(node)
                 if depth < nearest_depth:
                     nearest_depth = depth
                     nearest_output = node
 
-            # Continue BFS on successors
             for neighbor in G.successors(node):
                 if neighbor not in visited:
                     visited.add(neighbor)
@@ -153,20 +169,21 @@ class DependencyGraph:
                     depth_map[neighbor] = depth + 1
                     queue.append((neighbor, depth + 1))
 
-        # Build path to nearest output
+        # Build signal path to nearest output
         signal_path: List[str] = []
-        if nearest_output:
-            # Trace back
+        if nearest_output and nearest_output != start_signal:
             path: List[str] = []
             cur = nearest_output
             while cur is not None:
                 path.append(cur)
                 cur = predecessor.get(cur)
             signal_path = list(reversed(path))
+        elif start_is_output:
+            signal_path = [start_signal]
 
         reach_output = bool(affected_outputs)
         propagation_depth = nearest_depth if reach_output else 999
-        fanout_count = len(visited) - 1  # exclude start signal itself
+        fanout_count = len(visited) - 1
 
         return GraphImpact(
             signal=start_signal,

@@ -1,11 +1,7 @@
 """
 FastAPI Backend — RTL Bug Prioritization & Impact Analyzer
 ============================================================
-Endpoints:
-  POST /analyze  — full pipeline analysis
-  GET  /health   — health check
-  GET  /examples — list available example files
-  POST /examples/{name} — analyze a bundled example
+Serves the HTML frontend at GET / and provides API endpoints.
 """
 
 from __future__ import annotations
@@ -15,8 +11,10 @@ import logging
 import pathlib
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.pipeline import run_pipeline
@@ -51,6 +49,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve local static assets (plotly, etc.) for offline use
+_static_dir = pathlib.Path(__file__).parent.parent
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
 # ---------------------------------------------------------------------------
 # Request / Response Models
 # ---------------------------------------------------------------------------
@@ -78,6 +80,15 @@ async def startup_event():
     logger.info("Warming up ML model...")
     get_model()
     logger.info("ML model ready.")
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    """Serve the main HTML frontend."""
+    html_path = pathlib.Path(__file__).parent.parent / "index.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Frontend not found.")
+    return FileResponse(str(html_path), media_type="text/html")
 
 # ---------------------------------------------------------------------------
 # Endpoints

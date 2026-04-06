@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RTL Bug Prioritization & Impact Analyzer</title>
+<!-- Plotly served locally for offline use -->
+<script src="/static/plotly.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg0:#07090f;--bg1:#0c1120;--bg2:#111827;--bg3:#172033;
+  --border:#1e2d47;--border2:#2a3f60;
+  --blue:#3b82f6;--cyan:#06b6d4;--purple:#8b5cf6;--green:#10b981;
+  --red:#ef4444;--amber:#f59e0b;
+  --text1:#f1f5f9;--text2:#94a3b8;--text3:#64748b;
+  --mono:'JetBrains Mono','Cascadia Code','Consolas',monospace;
+  --sans:'Inter','Segoe UI',system-ui,sans-serif;
+}
+
+html,body{height:100%;font-family:var(--sans);background:var(--bg0);color:var(--text1);overflow:hidden}
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+#app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+
+/* HEADER */
+#topbar{
+  display:flex;align-items:center;gap:1rem;
+  padding:0 1.5rem;
+  background:var(--bg1);
+  border-bottom:1px solid var(--border);
+  z-index:100;
+}
+#topbar .logo{
+  font-size:.95rem;font-weight:800;
+  background:linear-gradient(135deg,#60a5fa,#a78bfa,#34d399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;white-space:nowrap;
+}
+#topbar .tagline{font-size:.72rem;color:var(--text3);margin-left:.25rem}
+#status-pill{
+  margin-left:auto;display:flex;align-items:center;gap:.4rem;
+  font-size:.7rem;font-family:var(--mono);
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:20px;padding:.2rem .75rem;color:var(--text3);
+}
+#status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s}
+#status-dot.ready{background:var(--green);box-shadow:0 0 6px var(--green)}
+#status-dot.analyzing{background:var(--blue);box-shadow:0 0 6px var(--blue);animation:pulse 1s infinite}
+#status-dot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MAIN SPLIT */
+#main{display:grid;grid-template-columns:320px 1fr;overflow:hidden}
+
+/* LEFT PANEL */
+#left{
+  display:flex;flex-direction:column;gap:0;
+  background:var(--bg1);border-right:1px solid var(--border);
+  overflow-y:auto;overflow-x:hidden;
+}
+#left::-webkit-scrollbar{width:4px}
+#left::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.panel-section{padding:.85rem 1rem;border-bottom:1px solid var(--border)}
+.panel-label{
+  font-size:.62rem;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;color:var(--text3);margin-bottom:.5rem;
+  display:flex;align-items:center;gap:.35rem;
+}
+
+/* Example selector */
+#example-select{
+  width:100%;background:var(--bg2);border:1px solid var(--border2);
+  color:var(--text1);font-family:var(--sans);font-size:.8rem;
+  padding:.45rem .6rem;border-radius:6px;outline:none;cursor:pointer;
+}
+#example-select:focus{border-color:var(--blue)}
+
+/* Code textarea */
+#rtl-code{
+  width:100%;height:220px;resize:vertical;
+  background:var(--bg0);border:1px solid var(--border2);
+  color:#a5f3fc;font-family:var(--mono);font-size:.72rem;
+  line-height:1.6;padding:.6rem;border-radius:6px;outline:none;
+  transition:border-color .2s;
+}
+#rtl-code:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+
+/* Ext issues */
+#ext-issues{
+  width:100%;height:70px;resize:vertical;
+  background:var(--bg0);border:1px solid var(--border2);
+  color:var(--text2);font-family:var(--mono);font-size:.7rem;
+  padding:.5rem;border-radius:6px;outline:none;
+}
+#ext-issues:focus{border-color:var(--purple)}
+
+/* Analyze button */
+#analyze-btn{
+  display:flex;align-items:center;justify-content:center;gap:.5rem;
+  width:calc(100% - 2rem);margin:.75rem 1rem;
+  padding:.65rem;border:none;border-radius:8px;cursor:pointer;
+  font-family:var(--sans);font-size:.85rem;font-weight:700;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  color:#fff;
+  box-shadow:0 2px 12px rgba(59,130,246,.35);
+  transition:all .2s;
+}
+#analyze-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(59,130,246,.5)}
+#analyze-btn:active{transform:translateY(0)}
+#analyze-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* Pipeline steps */
+.pipe-step{
+  display:flex;align-items:center;gap:.5rem;
+  font-size:.68rem;color:var(--text3);padding:.2rem 0;
+}
+.pipe-num{
+  width:16px;height:16px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.55rem;font-weight:700;flex-shrink:0;
+  background:var(--bg2);border:1px solid var(--border);
+  color:var(--text3);transition:all .3s;
+}
+.pipe-num.done{background:rgba(16,185,129,.2);border-color:var(--green);color:var(--green)}
+.pipe-num.active{background:rgba(59,130,246,.2);border-color:var(--blue);color:var(--blue);animation:pulse 1s infinite}
+
+/* RIGHT PANEL */
+#right{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0)}
+
+/* Tab bar */
+#tabs{
+  display:flex;gap:.25rem;padding:.6rem 1.2rem .4rem;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.tab{
+  padding:.35rem 1rem;border-radius:6px;font-size:.8rem;font-weight:500;
+  cursor:pointer;color:var(--text3);border:1px solid transparent;
+  transition:all .18s;white-space:nowrap;
+}
+.tab:hover{color:var(--text2);background:var(--bg2)}
+.tab.active{
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  color:#fff;border-color:transparent;
+  box-shadow:0 2px 10px rgba(59,130,246,.35);
+}
+
+/* Tab content */
+#tab-content{flex:1;overflow-y:auto;padding:1.2rem 1.5rem}
+#tab-content::-webkit-scrollbar{width:5px}
+#tab-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* ── METRICS ROW ─────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.2rem}
+.metric{
+  background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:1rem 1.2rem;text-align:center;position:relative;overflow:hidden;
+  transition:all .2s;
+}
+.metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--mc,var(--blue))}
+.metric:hover{border-color:var(--border2);transform:translateY(-2px)}
+.metric-val{font-size:2.2rem;font-weight:800;color:var(--mc,var(--blue));line-height:1}
+.metric-lbl{font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-top:.3rem}
+
+/* ── CHARTS ROW ─────────────────────────────────────── */
+.charts-row{display:grid;grid-template-columns:200px 1fr;gap:.75rem;margin-bottom:1.2rem}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.8rem}
+.chart-card h3{font-size:.72rem;font-weight:600;color:var(--text2);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.5px}
+
+/* ── PARSE INFO STRIP ─────────────────────────────── */
+.info-strip{
+  display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.2rem;
+}
+.info-chip{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:.3rem .7rem;font-size:.7rem;
+  color:var(--text2);font-family:var(--mono);
+}
+.info-chip b{color:var(--cyan)}
+
+/* ── BUG CARDS ────────────────────────────────────── */
+.section-head{
+  font-size:.72rem;font-weight:700;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.6px;
+  padding-bottom:.5rem;border-bottom:1px solid var(--border);
+  margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem;
+}
+.bug-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-left:3px solid var(--bc,var(--blue));
+  border-radius:10px;padding:.85rem 1rem;margin-bottom:.6rem;
+  transition:all .18s;
+}
+.bug-card:hover{background:var(--bg3);border-color:var(--border2);box-shadow:0 0 16px rgba(59,130,246,.1)}
+.bug-header{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin-bottom:.4rem}
+.rank-tag{font-size:.62rem;font-family:var(--mono);color:var(--text3);background:var(--bg0);padding:.1rem .4rem;border-radius:4px}
+.signal-name{font-family:var(--mono);font-size:.88rem;font-weight:600;color:var(--cyan)}
+.module-name{font-size:.7rem;color:var(--text3);font-family:var(--mono)}
+.score-info{margin-left:auto;font-size:.7rem;font-family:var(--mono);color:var(--text3)}
+.score-info b{color:var(--bc,var(--blue))}
+.bug-desc{font-size:.78rem;color:var(--text2);line-height:1.5;margin:.3rem 0}
+.path-tag{
+  display:inline-block;font-family:var(--mono);font-size:.68rem;
+  background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);
+  color:#93c5fd;padding:.1rem .5rem;border-radius:4px;margin-top:.3rem;
+}
+.bar-wrap{height:5px;background:var(--bg0);border-radius:3px;margin-top:.5rem;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;background:var(--bc,var(--blue));transition:width .5s ease}
+
+/* severity badges */
+.badge{
+  display:inline-flex;align-items:center;gap:.2rem;
+  padding:.1rem .55rem;border-radius:12px;font-size:.65rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;
+}
+.badge-High{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+.badge-Medium{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+.badge-Low{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3)}
+
+/* ── GRAPH TAB ─────────────────────────────────────── */
+#graph-legend{display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.8rem}
+.legend-item{display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--text2)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+#graph-plot{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg1)}
+.graph-stats{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem}
+.graph-stat{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.45rem .8rem;font-size:.72rem;text-align:center}
+.graph-stat b{display:block;font-size:1.1rem;font-weight:700;color:var(--blue)}
+
+/* ── EXPLANATIONS ─────────────────────────────────── */
+.filter-row{display:flex;gap:.4rem;margin-bottom:1rem;flex-wrap:wrap}
+.filter-btn{
+  padding:.25rem .7rem;border-radius:14px;font-size:.72rem;font-weight:600;cursor:pointer;
+  border:1px solid transparent;transition:all .18s;
+}
+.filter-btn.f-High{border-color:rgba(239,68,68,.4);color:#f87171;background:rgba(239,68,68,.1)}
+.filter-btn.f-High.off{opacity:.35;background:transparent}
+.filter-btn.f-Medium{border-color:rgba(245,158,11,.4);color:#fbbf24;background:rgba(245,158,11,.1)}
+.filter-btn.f-Medium.off{opacity:.35;background:transparent}
+.filter-btn.f-Low{border-color:rgba(16,185,129,.4);color:#34d399;background:rgba(16,185,129,.1)}
+.filter-btn.f-Low.off{opacity:.35;background:transparent}
+
+.expl-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:10px;margin-bottom:.65rem;overflow:hidden;
+}
+.expl-header{
+  display:flex;align-items:center;gap:.6rem;padding:.75rem 1rem;cursor:pointer;
+  transition:background .15s;
+}
+.expl-header:hover{background:var(--bg3)}
+.expl-toggle{color:var(--text3);font-size:.8rem;transition:transform .2s;margin-left:auto}
+.expl-toggle.open{transform:rotate(90deg)}
+.expl-body{
+  display:none;padding:0 1rem 1rem;
+}
+.expl-body.open{display:grid;grid-template-columns:1fr 260px;gap:1rem}
+.expl-text{
+  font-family:var(--mono);font-size:.72rem;line-height:1.75;color:#cbd5e1;
+  background:var(--bg1);border-radius:8px;padding:.85rem;white-space:pre-wrap;
+}
+.expl-meta{font-size:.75rem}
+.expl-meta table{width:100%;border-collapse:collapse}
+.expl-meta td{padding:.3rem .4rem;border-bottom:1px solid var(--border);color:var(--text2)}
+.expl-meta td:first-child{color:var(--text3);width:45%}
+.expl-meta code{font-family:var(--mono);font-size:.68rem;color:var(--cyan);background:var(--bg0);padding:.05rem .3rem;border-radius:3px}
+.path-flow{margin-top:.6rem;display:flex;flex-wrap:wrap;align-items:center;gap:.2rem;font-size:.68rem;font-family:var(--mono)}
+.path-node{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#93c5fd;padding:.1rem .4rem;border-radius:3px}
+.path-arrow{color:var(--text3)}
+
+/* ── ML TAB ─────────────────────────────────────────── */
+.ml-grid{display:grid;grid-template-columns:1fr 280px;gap:1rem;margin-bottom:1rem}
+.ml-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem}
+.ml-card h3{font-size:.75rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.8rem}
+.ml-stat-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.ml-stat-table td{padding:.4rem .5rem;border-bottom:1px solid var(--border);color:var(--text2)}
+.ml-stat-table td:first-child{color:var(--text3);width:55%}
+.ml-stat-table td b{color:var(--cyan);font-family:var(--mono)}
+.formula-box{
+  background:var(--bg0);border:1px solid var(--border);border-radius:8px;
+  font-family:var(--mono);font-size:.7rem;color:#a5f3fc;
+  padding:.85rem;line-height:2;margin-top:.5rem;
+}
+.feature-desc{margin-top:.75rem}
+.feature-row{
+  display:flex;align-items:flex-start;gap:.6rem;padding:.4rem 0;
+  border-bottom:1px solid var(--border);font-size:.73rem;
+}
+.feature-row:last-child{border:none}
+.feat-name{font-family:var(--mono);font-size:.68rem;color:var(--cyan);width:180px;flex-shrink:0}
+.feat-desc{color:var(--text2);line-height:1.4}
+
+/* ── EMPTY STATE ─────────────────────────────────── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:60%;gap:.75rem;color:var(--text3);
+}
+.empty-state .icon{font-size:3.5rem;opacity:.4}
+.empty-state p{font-size:.9rem;font-weight:600;color:var(--text2)}
+.empty-state span{font-size:.78rem;color:var(--text3)}
+
+/* ── TOAST ───────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;
+  display:flex;align-items:center;gap:.6rem;
+  background:var(--bg2);border:1px solid var(--border2);
+  border-radius:10px;padding:.7rem 1.1rem;font-size:.8rem;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  transform:translateY(80px);opacity:0;
+  transition:all .3s ease;pointer-events:none;
+  max-width:340px;
+}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.success{border-left:3px solid var(--green)}
+#toast.error{border-left:3px solid var(--red)}
+
+/* scrollbar global */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg0)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <span style="font-size:1.2rem">🔬</span>
+    <span class="logo">RTL Bug Prioritization &amp; Impact Analyzer</span>
+    <span class="tagline">Intelligent static analysis · Graph-based propagation · ML-powered scoring</span>
+    <div id="status-pill">
+      <div id="status-dot"></div>
+      <span id="status-text">Ready</span>
+    </div>
+  </div>
+
+  <!-- MAIN SPLIT -->
+  <div id="main">
+    <!-- LEFT PANEL -->
+    <div id="left">
+      <!-- Example loader -->
+      <div class="panel-section">
+        <div class="panel-label">📂 Load Example</div>
+        <select id="example-select">
+          <option value="">— paste your own —</option>
+          <option value="simple_alu">simple_alu.v</option>
+          <option value="counter_issues">counter_issues.v</option>
+        </select>
+      </div>
+
+      <!-- RTL Code -->
+      <div class="panel-section" style="flex:1">
+        <div class="panel-label">📝 RTL Source Code (Verilog / VHDL)</div>
+        <textarea id="rtl-code" spellcheck="false" placeholder="// Paste your Verilog or VHDL here..."></textarea>
+      </div>
+
+      <!-- External Issues -->
+      <div class="panel-section">
+        <div class="panel-label">🔧 External Issues <span style="font-weight:400;text-transform:none;letter-spacing:0">(JSON, optional)</span></div>
+        <textarea id="ext-issues" spellcheck="false" placeholder='[{"type":"latch_risk","signal":"q","module":"mod","confidence":0.9}]'></textarea>
+      </div>
+
+      <!-- Analyze button -->
+      <button id="analyze-btn" onclick="runAnalysis()">
+        <span id="btn-icon">🚀</span>
+        <span id="btn-text">Analyze RTL</span>
+      </button>
+
+      <!-- Pipeline stages -->
+      <div class="panel-section">
+        <div class="panel-label">⚙️ Pipeline Stages</div>
+        <div id="pipe-steps">
+          <div class="pipe-step"><div class="pipe-num" id="p1">1</div> RTL Parsing (PyVerilog / Regex)</div>
+          <div class="pipe-step"><div class="pipe-num" id="p2">2</div> Bug Detection (4 rules)</div>
+          <div class="pipe-step"><div class="pipe-num" id="p3">3</div> Dependency Graph (NetworkX)</div>
+          <div class="pipe-step"><div class="pipe-num" id="p4">4</div> BFS Impact Analysis</div>
+          <div class="pipe-step"><div class="pipe-num" id="p5">5</div> Feature Extraction</div>
+          <div class="pipe-step"><div class="pipe-num" id="p6">6</div> ML Scoring (Random Forest)</div>
+          <div class="pipe-step"><div class="pipe-num" id="p7">7</div> Hybrid Ranking</div>
+          <div class="pipe-step"><div class="pipe-num" id="p8">8</div> Explanation Generation</div>
+        </div>
+      </div>
+    </div><!-- /left -->
+
+    <!-- RIGHT PANEL -->
+    <div id="right">
+      <div id="tabs">
+        <div class="tab active" data-tab="dashboard">📊 Dashboard</div>
+        <div class="tab" data-tab="graph">🔗 Dependency Graph</div>
+        <div class="tab" data-tab="explanations">🧾 Explanations</div>
+        <div class="tab" data-tab="ml">🤖 ML Insights</div>
+      </div>
+
+      <div id="tab-content">
+        <!-- DASHBOARD -->
+        <div class="tab-pane active" id="pane-dashboard">
+          <div id="welcome" class="empty-state">
+            <div class="icon">🔬</div>
+            <p>Ready to analyze your RTL design</p>
+            <span>Paste Verilog / VHDL code on the left and click <b>Analyze RTL</b></span>
+          </div>
+          <div id="dashboard-results" style="display:none">
+            <div id="metrics" class="metrics"></div>
+            <div class="charts-row">
+              <div class="chart-card">
+                <h3>Severity</h3>
+                <div id="chart-donut" style="height:170px"></div>
+              </div>
+              <div class="chart-card" style="padding:.8rem">
+                <h3>Bug Types</h3>
+                <div id="chart-bars" style="height:170px"></div>
+              </div>
+            </div>
+            <div id="parse-info-strip" class="info-strip"></div>
+            <div class="section-head">🏆 Ranked Issues</div>
+            <div id="bug-list"></div>
+          </div>
+        </div>
+
+        <!-- GRAPH -->
+        <div class="tab-pane" id="pane-graph">
+          <div class="empty-state" id="graph-empty">
+            <div class="icon">🔗</div>
+            <p>No graph yet</p><span>Run analysis first</span>
+          </div>
+          <div id="graph-content" style="display:none">
+            <div id="graph-legend" class="graph-legend">
+              <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Bug on Output</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Bug Signal</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div>Output Port</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Input Port</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div>Propagation Path</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#1e3a5f"></div>Internal Signal</div>
+            </div>
+            <div id="graph-plot"></div>
+            <div id="graph-stats" class="graph-stats"></div>
+          </div>
+        </div>
+
+        <!-- EXPLANATIONS -->
+        <div class="tab-pane" id="pane-explanations">
+          <div class="empty-state" id="expl-empty">
+            <div class="icon">🧾</div>
+            <p>No explanations yet</p><span>Run analysis first</span>
+          </div>
+          <div id="expl-content" style="display:none">
+            <div class="filter-row">
+              <span style="font-size:.72rem;color:var(--text3);align-self:center">Filter:</span>
+              <button class="filter-btn f-High" data-sev="High" onclick="toggleFilter(this)">🔴 High</button>
+              <button class="filter-btn f-Medium" data-sev="Medium" onclick="toggleFilter(this)">🟡 Medium</button>
+              <button class="filter-btn f-Low" data-sev="Low" onclick="toggleFilter(this)">🟢 Low</button>
+            </div>
+            <div id="expl-list"></div>
+          </div>
+        </div>
+
+        <!-- ML INSIGHTS -->
+        <div class="tab-pane" id="pane-ml">
+          <div class="ml-grid">
+            <div class="ml-card">
+              <h3>Random Forest Feature Importance</h3>
+              <div id="chart-importance" style="height:240px"></div>
+            </div>
+            <div>
+              <div class="ml-card" style="margin-bottom:.75rem">
+                <h3>Model Configuration</h3>
+                <table class="ml-stat-table">
+                  <tr><td>Algorithm</td><td><b>Random Forest</b></td></tr>
+                  <tr><td>Estimators</td><td><b>150</b></td></tr>
+                  <tr><td>Max Depth</td><td><b>8</b></td></tr>
+                  <tr><td>Training Samples</td><td><b>600 (synthetic)</b></td></tr>
+                  <tr><td>Features</td><td><b>7</b></td></tr>
+                  <tr><td>Output Classes</td><td><b>Low / Medium / High</b></td></tr>
+                  <tr><td>Training Accuracy</td><td><b id="ml-accuracy">—</b></td></tr>
+                </table>
+              </div>
+              <div class="ml-card">
+                <h3>Scoring Formula</h3>
+                <div class="formula-box">rule =<br>  0.40 × reach_output<br>+ 0.25 × (1/depth)<br>+ 0.20 × fanout_norm<br>+ 0.15 × timing_risk<br><br>final =<br>  0.70 × rule<br>+ 0.30 × ml_score</div>
+              </div>
+            </div>
+          </div>
+          <div class="ml-card">
+            <h3>Feature Descriptions</h3>
+            <div class="feature-desc" id="feature-desc"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /right -->
+  </div><!-- /main -->
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+let lastResult = null;
+let activeFilters = new Set(['High','Medium','Low']);
+
+// ── TABS ───────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('pane-'+t.dataset.tab).classList.add('active');
+    if(t.dataset.tab==='graph'&&lastResult) renderGraph(lastResult.graph_data,lastResult.results);
+    if(t.dataset.tab==='ml') loadMLInsights();
+  });
+});
+
+// ── EXAMPLE LOADER ─────────────────────────────────────────────
+document.getElementById('example-select').addEventListener('change',async function(){
+  const v=this.value; if(!v)return;
+  try{
+    const r=await fetch(`${API}/examples/${v}.v`);
+    const d=await r.json();
+    document.getElementById('rtl-code').value=d.content||'';
+  }catch(e){
+    // fallback: try without extension
+    try{
+      const r=await fetch(`${API}/examples/${v}`);
+      const d=await r.json();
+      document.getElementById('rtl-code').value=d.content||'';
+    }catch(e2){showToast('Could not load example','error')}
+  }
+});
+
+// ── PIPELINE ANIMATION ─────────────────────────────────────────
+const PIPE_COUNT=8;
+let pipeTimer=null;
+function startPipeAnim(){
+  let s=1;
+  clearInterval(pipeTimer);
+  for(let i=1;i<=PIPE_COUNT;i++) setStep(i,'');
+  pipeTimer=setInterval(()=>{
+    if(s>1) setStep(s-1,'done');
+    setStep(s,'active');
+    s++;
+    if(s>PIPE_COUNT){clearInterval(pipeTimer);}
+  },300);
+}
+function finishPipeAnim(){
+  clearInterval(pipeTimer);
+  for(let i=1;i<=PIPE_COUNT;i++) setStep(i,'done');
+}
+function resetPipeAnim(){
+  clearInterval(pipeTimer);
+  for(let i=1;i<=PIPE_COUNT;i++) setStep(i,'');
+}
+function setStep(n,cls){
+  const el=document.getElementById('p'+n);
+  if(!el)return;
+  el.classList.remove('done','active');
+  if(cls) el.classList.add(cls);
+  el.textContent=cls==='done'?'✓':n;
+}
+
+// ── STATUS ─────────────────────────────────────────────────────
+function setStatus(state,text){
+  const dot=document.getElementById('status-dot');
+  const txt=document.getElementById('status-text');
+  dot.className='';
+  if(state) dot.classList.add(state);
+  txt.textContent=text;
+}
+
+// ── TOAST ──────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg,type='success'){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show '+(type||'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.className='',3000);
+}
+
+// ── ANALYSIS ───────────────────────────────────────────────────
+async function runAnalysis(){
+  const code=document.getElementById('rtl-code').value.trim();
+  if(!code){showToast('Paste RTL code first','error');return;}
+
+  let extIssues=[];
+  const extRaw=document.getElementById('ext-issues').value.trim();
+  if(extRaw){
+    try{extIssues=JSON.parse(extRaw);}
+    catch(e){showToast('External issues JSON invalid — ignoring','error');}
+  }
+
+  const btn=document.getElementById('analyze-btn');
+  btn.disabled=true;
+  document.getElementById('btn-text').textContent='Analyzing...';
+  document.getElementById('btn-icon').textContent='⏳';
+  setStatus('analyzing','Analyzing...');
+  startPipeAnim();
+
+  try{
+    const res=await fetch(`${API}/analyze`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rtl_code:code,external_issues:extIssues})
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+    lastResult=data;
+    finishPipeAnim();
+    renderDashboard(data);
+    setStatus('ready',`Done — ${data.summary.total} issues in ${data.timing_ms.total||'?'}ms`);
+    showToast(`✅ ${data.summary.total} issues found (${data.summary.high} High, ${data.summary.medium} Medium, ${data.summary.low} Low)`,'success');
+
+    // Preload graph and ML if already on those tabs
+    const activeTab=document.querySelector('.tab.active')?.dataset.tab;
+    if(activeTab==='graph') renderGraph(data.graph_data,data.results);
+    if(activeTab==='ml') loadMLInsights();
+
+  }catch(e){
+    setStatus('error','Error');
+    resetPipeAnim();
+    showToast('Analysis failed: '+e.message,'error');
+    console.error(e);
+  }finally{
+    btn.disabled=false;
+    document.getElementById('btn-text').textContent='Analyze RTL';
+    document.getElementById('btn-icon').textContent='🚀';
+  }
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────────
+const SEV_COLOR={High:'#ef4444',Medium:'#f59e0b',Low:'#10b981'};
+const SEV_ICON={High:'🔴',Medium:'🟡',Low:'🟢'};
+const BUG_ICON={unused_signal:'🔇',undriven_signal:'📡',conflicting_assignment:'⚡',latch_risk:'🔒',external:'🔧'};
+const BUG_LABEL={unused_signal:'Unused Signal',undriven_signal:'Undriven Signal',conflicting_assignment:'Conflicting Assignment',latch_risk:'Latch Risk',external:'External'};
+
+function renderDashboard(data){
+  const s=data.summary;
+  document.getElementById('welcome').style.display='none';
+  document.getElementById('dashboard-results').style.display='block';
+
+  // Metrics
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric" style="--mc:#60a5fa"><div class="metric-val">${s.total}</div><div class="metric-lbl">Total Issues</div></div>
+    <div class="metric" style="--mc:#f87171"><div class="metric-val">${s.high}</div><div class="metric-lbl">🔴 High</div></div>
+    <div class="metric" style="--mc:#fbbf24"><div class="metric-val">${s.medium}</div><div class="metric-lbl">🟡 Medium</div></div>
+    <div class="metric" style="--mc:#34d399"><div class="metric-val">${s.low}</div><div class="metric-lbl">🟢 Low</div></div>
+  `;
+
+  // Donut
+  Plotly.newPlot('chart-donut',[{
+    type:'pie',values:[s.high,s.medium,s.low],labels:['High','Medium','Low'],
+    hole:.58,marker:{colors:['#ef4444','#f59e0b','#10b981'],line:{color:'#07090f',width:2}},
+    textinfo:'percent',textfont:{family:'Inter',size:10,color:'#fff'},
+    hovertemplate:'<b>%{label}</b><br>%{value} issues<br>%{percent}<extra></extra>'
+  }],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    showlegend:false,margin:{l:4,r:4,t:4,b:4},
+    annotations:[{text:`<b>${s.total}</b>`,x:.5,y:.5,showarrow:false,font:{size:18,color:'#f1f5f9',family:'Inter'}}]
+  },{displayModeBar:false,responsive:true});
+
+  // Bug type bars
+  const bc={};
+  data.results.forEach(r=>bc[r.bug_type]=(bc[r.bug_type]||0)+1);
+  const bkeys=Object.keys(bc),bvals=Object.values(bc);
+  const bcolors=['#3b82f6','#06b6d4','#8b5cf6','#f59e0b','#10b981'];
+  Plotly.newPlot('chart-bars',[{
+    type:'bar',x:bkeys.map(k=>BUG_LABEL[k]||k),y:bvals,
+    marker:{color:bcolors.slice(0,bkeys.length),line:{color:'rgba(255,255,255,.05)',width:1}},
+    hovertemplate:'<b>%{x}</b><br>%{y} issues<extra></extra>'
+  }],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'Inter',color:'#64748b',size:9},
+    margin:{l:20,r:8,t:4,b:40},
+    xaxis:{gridcolor:'#1e2d47',tickfont:{size:9}},
+    yaxis:{gridcolor:'#1e2d47',tickfont:{size:9}}
+  },{displayModeBar:false,responsive:true});
+
+  // Parse info strip
+  const pi=data.parse_info;
+  document.getElementById('parse-info-strip').innerHTML=`
+    <div class="info-chip">Parser: <b>${pi.method?.toUpperCase()}</b></div>
+    <div class="info-chip">Modules: <b>${(pi.modules||[]).join(', ')||'—'}</b></div>
+    <div class="info-chip">Signals: <b>${pi.signal_count}</b></div>
+    <div class="info-chip">Assignments: <b>${pi.assignment_count}</b></div>
+    <div class="info-chip">Time: <b>${data.timing_ms.total}ms</b></div>
+  `;
+
+  // Bug list
+  const bl=document.getElementById('bug-list');
+  bl.innerHTML='';
+  data.results.forEach(r=>{
+    const col=SEV_COLOR[r.severity_label]||'#3b82f6';
+    const path=r.signal_path?.join(' → ')||'';
+    const pct=Math.round(r.final_score*100);
+    bl.innerHTML+=`
+      <div class="bug-card" style="--bc:${col}">
+        <div class="bug-header">
+          <span class="rank-tag">#${r.rank}</span>
+          <span style="font-size:1rem">${BUG_ICON[r.bug_type]||'🔧'}</span>
+          <span class="signal-name">${r.signal}</span>
+          <span class="badge badge-${r.severity_label}">${SEV_ICON[r.severity_label]} ${r.severity_label}</span>
+          <span class="module-name">@ ${r.module}</span>
+          <span class="score-info">Score: <b>${r.final_score.toFixed(3)}</b> &nbsp;|&nbsp; Rule: ${r.rule_score.toFixed(3)} &nbsp;|&nbsp; ML: ${r.ml_score.toFixed(3)}</span>
+        </div>
+        <div class="bug-desc">${r.description}</div>
+        ${path?`<div class="path-tag">📡 ${path}</div>`:''}
+        <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+  });
+
+  renderExplanations(data.results);
+}
+
+// ── GRAPH ──────────────────────────────────────────────────────
+function renderGraph(graphData,results){
+  const nodes=graphData.nodes||[];
+  const edges=graphData.edges||[];
+  if(!nodes.length){return;}
+
+  document.getElementById('graph-empty').style.display='none';
+  document.getElementById('graph-content').style.display='block';
+
+  const bugSet=new Set((results||[]).map(r=>r.signal));
+  const pathSet=new Set((results||[]).flatMap(r=>r.signal_path||[]));
+
+  // Simple spring-ish layout using D3-style force approximation
+  const pos={};
+  nodes.forEach((n,i)=>{
+    const angle=(i/nodes.length)*2*Math.PI;
+    const r=0.8+Math.random()*0.4;
+    pos[n.id]=[Math.cos(angle)*r+( Math.random()-.5)*.3, Math.sin(angle)*r+(Math.random()-.5)*.3];
+  });
+  // 30 iterations of basic force
+  for(let iter=0;iter<30;iter++){
+    const force={};
+    nodes.forEach(n=>{force[n.id]=[0,0]});
+    // repulsion
+    for(let a=0;a<nodes.length;a++) for(let b=a+1;b<nodes.length;b++){
+      const dx=pos[nodes[b].id][0]-pos[nodes[a].id][0];
+      const dy=pos[nodes[b].id][1]-pos[nodes[a].id][1];
+      const d=Math.sqrt(dx*dx+dy*dy)||.01;
+      const f=0.05/(d*d);
+      force[nodes[a].id][0]-=f*dx; force[nodes[a].id][1]-=f*dy;
+      force[nodes[b].id][0]+=f*dx; force[nodes[b].id][1]+=f*dy;
+    }
+    // attraction
+    edges.forEach(e=>{
+      if(!pos[e.source]||!pos[e.target])return;
+      const dx=pos[e.target][0]-pos[e.source][0];
+      const dy=pos[e.target][1]-pos[e.source][1];
+      const d=Math.sqrt(dx*dx+dy*dy)||.01;
+      const f=d*0.08;
+      force[e.source][0]+=f*dx; force[e.source][1]+=f*dy;
+      force[e.target][0]-=f*dx; force[e.target][1]-=f*dy;
+    });
+    nodes.forEach(n=>{
+      pos[n.id][0]+=Math.max(-0.1,Math.min(0.1,force[n.id][0]));
+      pos[n.id][1]+=Math.max(-0.1,Math.min(0.1,force[n.id][1]));
+    });
+  }
+
+  // Edge traces
+  const edgeTraces=[];
+  edges.forEach(e=>{
+    if(!pos[e.source]||!pos[e.target])return;
+    const isPath=pathSet.has(e.source)&&pathSet.has(e.target);
+    edgeTraces.push({
+      type:'scatter',mode:'lines',
+      x:[pos[e.source][0],pos[e.target][0],null],
+      y:[pos[e.source][1],pos[e.target][1],null],
+      line:{width:isPath?2:.8,color:isPath?'rgba(59,130,246,.7)':'rgba(45,66,112,.5)'},
+      hoverinfo:'none',showlegend:false
+    });
+  });
+
+  // Node trace
+  const nx=[],ny=[],nc=[],ns=[],ht=[],nl=[];
+  nodes.forEach(n=>{
+    if(!pos[n.id])return;
+    nx.push(pos[n.id][0]); ny.push(pos[n.id][1]);
+    const isBug=bugSet.has(n.id),isOut=n.is_output,isIn=n.is_input,isPath=pathSet.has(n.id);
+    let col,sz;
+    if(isBug&&isOut){col='#ef4444';sz=22;}
+    else if(isBug){col='#f59e0b';sz=18;}
+    else if(isOut){col='#06b6d4';sz=16;}
+    else if(isIn){col='#8b5cf6';sz=14;}
+    else if(isPath){col='#60a5fa';sz=12;}
+    else{col='#1e3a5f';sz=9;}
+    nc.push(col);ns.push(sz);
+    const tags=[];
+    if(isBug)tags.push('⚠️ BUG');if(isOut)tags.push('OUTPUT');if(isIn)tags.push('INPUT');
+    ht.push(`<b>${n.id}</b><br>${tags.join(' | ')||n.kind?.toUpperCase()||'wire'}<br>Module: ${n.module||'—'}`);
+    nl.push(n.id);
+  });
+
+  const nodeTrace={
+    type:'scatter',mode:'markers+text',x:nx,y:ny,
+    marker:{size:ns,color:nc,line:{width:1,color:'rgba(255,255,255,.1)'}},
+    text:nl,textposition:'top center',
+    textfont:{size:8,color:'#94a3b8',family:'JetBrains Mono'},
+    hovertext:ht,hoverinfo:'text',showlegend:false
+  };
+
+  Plotly.newPlot('graph-plot',[...edgeTraces,nodeTrace],{
+    paper_bgcolor:'#0c1120',plot_bgcolor:'#0c1120',
+    margin:{l:10,r:10,t:10,b:10},height:440,
+    xaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false},
+    yaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false},
+    hoverlabel:{bgcolor:'#172033',bordercolor:'#2a3f60',font:{family:'JetBrains Mono',size:11,color:'#f1f5f9'}}
+  },{displayModeBar:true,scrollZoom:true,responsive:true});
+
+  const gs=lastResult?.graph_stats||{};
+  document.getElementById('graph-stats').innerHTML=`
+    <div class="graph-stat"><b>${gs.nodes||nodes.length}</b>Nodes</div>
+    <div class="graph-stat"><b>${gs.edges||edges.length}</b>Edges</div>
+    <div class="graph-stat"><b>${(gs.outputs||[]).length}</b>Outputs</div>
+    <div class="graph-stat"><b>${(gs.inputs||[]).length}</b>Inputs</div>
+    <div class="graph-stat"><b>${gs.is_dag?'Yes':'No'}</b>Is DAG</div>
+  `;
+}
+
+// ── EXPLANATIONS ────────────────────────────────────────────────
+function renderExplanations(results){
+  document.getElementById('expl-empty').style.display='none';
+  document.getElementById('expl-content').style.display='block';
+  const list=document.getElementById('expl-list');
+  list.innerHTML='';
+  results.forEach(r=>{
+    const col=SEV_COLOR[r.severity_label]||'#3b82f6';
+    const pathHtml=(r.signal_path||[]).map(s=>`<span class="path-node">${s}</span>`).join('<span class="path-arrow"> → </span>');
+    const metaRows=`
+      <tr><td>Signal</td><td><code>${r.signal}</code></td></tr>
+      <tr><td>Module</td><td><code>${r.module}</code></td></tr>
+      <tr><td>Bug Type</td><td><code>${r.bug_type}</code></td></tr>
+      <tr><td>Location</td><td><code>${r.location||'—'}</code></td></tr>
+      <tr><td>Confidence</td><td><code>${Math.round(r.confidence*100)}%</code></td></tr>
+      <tr><td>Reach Output</td><td><code>${r.reach_output}</code></td></tr>
+      <tr><td>Depth</td><td><code>${r.propagation_depth}</code></td></tr>
+      <tr><td>Fanout</td><td><code>${r.fanout_count}</code></td></tr>
+    `;
+    list.innerHTML+=`
+      <div class="expl-card" data-sev="${r.severity_label}" style="border-left:3px solid ${col}">
+        <div class="expl-header" onclick="toggleExpl(this)">
+          <span class="rank-tag">#${r.rank}</span>
+          <span style="font-size:.95rem">${BUG_ICON[r.bug_type]||'🔧'}</span>
+          <span class="signal-name">${r.signal}</span>
+          <span class="badge badge-${r.severity_label}">${r.severity_label}</span>
+          <span class="module-name">@ ${r.module}</span>
+          <span style="margin-left:auto;font-size:.7rem;font-family:var(--mono);color:var(--text3)">Score: ${r.final_score.toFixed(3)}</span>
+          <span class="expl-toggle" style="margin-left:.6rem">▶</span>
+        </div>
+        <div class="expl-body">
+          <div class="expl-text">${escHtml(r.explanation)}</div>
+          <div class="expl-meta">
+            <table>${metaRows}</table>
+            ${pathHtml?`<div class="path-flow" style="margin-top:.6rem">${pathHtml}</div>`:''}
+          </div>
+        </div>
+      </div>`;
+  });
+  applyFilter();
+}
+
+function toggleExpl(hdr){
+  const toggle=hdr.querySelector('.expl-toggle');
+  const body=hdr.nextElementSibling;
+  const open=body.classList.toggle('open');
+  toggle.classList.toggle('open',open);
+}
+
+function toggleFilter(btn){
+  const sev=btn.dataset.sev;
+  btn.classList.toggle('off');
+  if(btn.classList.contains('off')) activeFilters.delete(sev);
+  else activeFilters.add(sev);
+  applyFilter();
+}
+
+function applyFilter(){
+  document.querySelectorAll('.expl-card').forEach(c=>{
+    c.style.display=activeFilters.has(c.dataset.sev)?'':'none';
+  });
+}
+
+// ── ML INSIGHTS ────────────────────────────────────────────────
+async function loadMLInsights(){
+  try{
+    const r=await fetch(`${API}/model/info`);
+    const d=await r.json();
+    document.getElementById('ml-accuracy').textContent=(d.train_accuracy*100).toFixed(1)+'%';
+
+    const pairs=d.feature_importances||[];
+    const labels=pairs.map(p=>p[0].replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));
+    const vals=pairs.map(p=>p[1]);
+
+    Plotly.newPlot('chart-importance',[{
+      type:'bar',orientation:'h',
+      x:vals,y:labels,
+      marker:{
+        color:vals,
+        colorscale:[[0,'#1e3a5f'],[0.5,'#3b82f6'],[1,'#06b6d4']],
+        line:{color:'rgba(255,255,255,.04)',width:1}
+      },
+      hovertemplate:'<b>%{y}</b><br>Importance: %{x:.4f}<extra></extra>'
+    }],{
+      paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+      font:{family:'Inter',color:'#94a3b8',size:10},
+      margin:{l:160,r:20,t:8,b:30},
+      xaxis:{gridcolor:'#1e2d47',zerolinecolor:'#1e2d47'},
+      yaxis:{gridcolor:'#1e2d47',tickfont:{family:'JetBrains Mono',size:10}}
+    },{displayModeBar:false,responsive:true});
+
+    const featureDescs=[
+      ['bug_type_encoded','0=unused 1=undriven 2=conflict 3=latch 4=external'],
+      ['reach_output','1 if bug propagates to any output port'],
+      ['propagation_depth_norm','Inverse of BFS depth to nearest output (higher = closer)'],
+      ['fanout_norm','Downstream affected signals / 20, capped at 1.0'],
+      ['timing_flag','1 if latch risk or clock-related signal name'],
+      ['module_importance','Heuristic: 1.0 for top-level, scaled by module depth'],
+      ['confidence','Detector confidence in this reported issue (0.70–0.95)']
+    ];
+    document.getElementById('feature-desc').innerHTML=featureDescs.map(([n,d])=>`
+      <div class="feature-row">
+        <div class="feat-name">${n}</div>
+        <div class="feat-desc">${d}</div>
+      </div>`).join('');
+  }catch(e){console.warn('ML info failed',e)}
+}
+
+// ── UTILS ──────────────────────────────────────────────────────
+function escHtml(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Initial ML load
+loadMLInsights();
+</script>
+</body>
+</html>

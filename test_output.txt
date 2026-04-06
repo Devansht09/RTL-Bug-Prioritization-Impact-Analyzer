@@ -1,0 +1,37 @@
+=== PARSE INFO ===
+  Modules: ['simple_alu', 'alu_wrapper']
+  Signals: 22
+
+=== SUMMARY ===
+  Total=12  High=1  Medium=2  Low=9
+
+=== ALL ISSUES (ranked) ===
+  #01 [High  ] result                 score=0.611  reach=True  depth=0  fanout=1
+         path: result
+  #02 [Medium] internal_result        score=0.543  reach=True  depth=1  fanout=1
+         path: internal_result -> alu_out
+  #03 [Medium] result                 score=0.410  reach=True  depth=0  fanout=1
+         path: result
+  #04 [Low   ] internal_carry         score=0.009  reach=False  depth=999  fanout=1
+         path: no output path
+  #05 [Low   ] unused_signal          score=0.005  reach=False  depth=999  fanout=0
+         path: no output path
+  #06 [Low   ] undriven_wire          score=0.005  reach=False  depth=999  fanout=0
+         path: no output path
+  #07 [Low   ] debug_bus              score=0.004  reach=False  depth=999  fanout=0
+         path: no output path
+  #08 [Low   ] debug_bus              score=0.001  reach=False  depth=999  fanout=0
+         path: no output path
+  #09 [Low   ] unused_signal          score=0.001  reach=False  depth=999  fanout=0
+         path: no output path
+  #10 [Low   ] undriven_wire          score=0.001  reach=False  depth=999  fanout=0
+         path: no output path
+  #11 [Low   ] xor_result             score=0.001  reach=False  depth=999  fanout=0
+         path: no output path
+  #12 [Low   ] forced_result          score=0.001  reach=False  depth=999  fanout=0
+         path: no output path
+
+=== GRAPH ===
+  Nodes=26  Edges=18
+
+DONE
