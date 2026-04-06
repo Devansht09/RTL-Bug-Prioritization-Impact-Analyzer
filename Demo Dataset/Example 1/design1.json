@@ -1,0 +1,20 @@
+[
+  {
+    "type": "conflicting_assignment",
+    "signal": "y",
+    "module": "design1",
+    "severity_hint": "high"
+  },
+  {
+    "type": "latch_risk",
+    "signal": "temp2",
+    "module": "design1",
+    "severity_hint": "medium"
+  },
+  {
+    "type": "unused_signal",
+    "signal": "unused_signal",
+    "module": "design1",
+    "severity_hint": "low"
+  }
+]

@@ -78,24 +78,27 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg0);color:var(--
 }
 #example-select:focus{border-color:var(--blue)}
 
-/* Code textarea */
-#rtl-code{
-  width:100%;height:220px;resize:vertical;
-  background:var(--bg0);border:1px solid var(--border2);
-  color:#a5f3fc;font-family:var(--mono);font-size:.72rem;
-  line-height:1.6;padding:.6rem;border-radius:6px;outline:none;
-  transition:border-color .2s;
+/* File Drop Zones */
+.file-drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: 8px;
+  background: var(--bg0);
+  text-align: center;
+  padding: 1.5rem 1rem;
+  cursor: pointer;
+  transition: all .2s;
+  color: var(--text2);
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
-#rtl-code:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
-
-/* Ext issues */
-#ext-issues{
-  width:100%;height:70px;resize:vertical;
-  background:var(--bg0);border:1px solid var(--border2);
-  color:var(--text2);font-family:var(--mono);font-size:.7rem;
-  padding:.5rem;border-radius:6px;outline:none;
+.file-drop-zone:hover, .file-drop-zone.dragover {
+  border-color: var(--blue);
+  background: rgba(59, 130, 246, 0.05);
+  color: var(--blue);
 }
-#ext-issues:focus{border-color:var(--purple)}
 
 /* Analyze button */
 #analyze-btn{
@@ -353,15 +356,24 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg0);color:var(--
       </div>
 
       <!-- RTL Code -->
-      <div class="panel-section" style="flex:1">
+      <div class="panel-section" style="flex:1; padding-bottom: 1.5rem">
         <div class="panel-label">📝 RTL Source Code (Verilog / VHDL)</div>
-        <textarea id="rtl-code" spellcheck="false" placeholder="// Paste your Verilog or VHDL here..."></textarea>
+        <div class="file-drop-zone" id="rtl-drop-zone" onclick="document.getElementById('rtl-file').click()" style="height: 180px;">
+           <input type="file" id="rtl-file" accept=".v,.sv,.vhdl,.vhd" style="display:none" onchange="handleFileSelect(event, 'rtl-file-name')">
+           <div style="font-size: 2.2rem; margin-bottom: 0.5rem; opacity: 0.8;">📄</div>
+           <strong id="rtl-file-name">Click or drag RTL file here</strong>
+           <div style="font-size: 0.75rem; color: var(--text3); margin-top: 0.4rem;">.v, .sv, .vhdl</div>
+        </div>
       </div>
 
-      <!-- External Issues -->
-      <div class="panel-section">
-        <div class="panel-label">🔧 External Issues <span style="font-weight:400;text-transform:none;letter-spacing:0">(JSON, optional)</span></div>
-        <textarea id="ext-issues" spellcheck="false" placeholder='[{"type":"latch_risk","signal":"q","module":"mod","confidence":0.9}]'></textarea>
+      <!-- Detected Issues -->
+      <div class="panel-section" style="padding-bottom: 1.5rem">
+        <div class="panel-label">🔧 Detected Issues <span style="font-weight:400;text-transform:none;letter-spacing:0">(JSON, optional)</span></div>
+        <div class="file-drop-zone" id="ext-drop-zone" onclick="document.getElementById('ext-file').click()" style="height: 90px; padding: 1rem;">
+           <input type="file" id="ext-file" accept=".json" style="display:none" onchange="handleFileSelect(event, 'ext-file-name')">
+           <div style="font-size: 1.3rem; margin-bottom: 0.2rem; opacity: 0.8;">📋</div>
+           <strong id="ext-file-name" style="font-size: 0.85rem">Click or drag JSON file</strong>
+        </div>
       </div>
 
       <!-- Analyze button -->
@@ -514,19 +526,52 @@ document.querySelectorAll('.tab').forEach(t=>{
   });
 });
 
+// ── FILE UPLOAD LOGIC ──────────────────────────────────────────
+function handleFileSelect(e, labelId) {
+  const file = e.target.files[0];
+  if (file) {
+    document.getElementById(labelId).textContent = file.name;
+    document.getElementById(labelId).style.color = 'var(--text1)';
+  }
+}
+function setupDragDrop(zoneId, inputId, labelId) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', e => { e.preventDefault(); zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if(e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      handleFileSelect({target: input}, labelId);
+    }
+  });
+}
+setupDragDrop('rtl-drop-zone', 'rtl-file', 'rtl-file-name');
+setupDragDrop('ext-drop-zone', 'ext-file', 'ext-file-name');
+
 // ── EXAMPLE LOADER ─────────────────────────────────────────────
+function setExampleFile(content, filename) {
+    const file = new File([content], filename, {type: "text/plain"});
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('rtl-file').files = dt.files;
+    document.getElementById('rtl-file-name').textContent = `${filename} (Example)`;
+    document.getElementById('rtl-file-name').style.color = 'var(--blue)';
+}
+
 document.getElementById('example-select').addEventListener('change',async function(){
   const v=this.value; if(!v)return;
   try{
     const r=await fetch(`${API}/examples/${v}.v`);
     const d=await r.json();
-    document.getElementById('rtl-code').value=d.content||'';
+    setExampleFile(d.content||'', `${v}.v`);
   }catch(e){
     // fallback: try without extension
     try{
       const r=await fetch(`${API}/examples/${v}`);
       const d=await r.json();
-      document.getElementById('rtl-code').value=d.content||'';
+      setExampleFile(d.content||'', `${v}.v`);
     }catch(e2){showToast('Could not load example','error')}
   }
 });
@@ -582,14 +627,24 @@ function showToast(msg,type='success'){
 
 // ── ANALYSIS ───────────────────────────────────────────────────
 async function runAnalysis(){
-  const code=document.getElementById('rtl-code').value.trim();
-  if(!code){showToast('Paste RTL code first','error');return;}
+  const rtlInput = document.getElementById('rtl-file');
+  const extInput = document.getElementById('ext-file');
+  
+  if(!rtlInput.files.length){showToast('No RTL file selected','error');return;}
+
+  let code = '';
+  try {
+    code = await rtlInput.files[0].text();
+  } catch(e) {
+    showToast('Failed to read RTL file','error');return;
+  }
 
   let extIssues=[];
-  const extRaw=document.getElementById('ext-issues').value.trim();
-  if(extRaw){
-    try{extIssues=JSON.parse(extRaw);}
-    catch(e){showToast('External issues JSON invalid — ignoring','error');}
+  if(extInput.files.length){
+    try{
+      const extRaw = await extInput.files[0].text();
+      extIssues=JSON.parse(extRaw);
+    }catch(e){showToast('Detected Issues JSON invalid — ignoring','error');}
   }
 
   const btn=document.getElementById('analyze-btn');

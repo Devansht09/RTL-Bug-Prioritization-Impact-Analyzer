@@ -84,9 +84,9 @@ def _rule_score(impact: GraphImpact, issue: Issue) -> float:
 
 
 def _label_from_score(score: float) -> str:
-    if score >= 0.60:
+    if score >= 0.45:
         return "High"
-    elif score >= 0.35:
+    elif score >= 0.20:
         return "Medium"
     else:
         return "Low"
