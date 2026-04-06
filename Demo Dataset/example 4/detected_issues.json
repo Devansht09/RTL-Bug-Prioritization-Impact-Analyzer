@@ -1,0 +1,9 @@
+[
+  {
+    "type": "external",
+    "signal": "clk_in",
+    "module": "clk_div",
+    "confidence": 1.0,
+    "description": "Clock signal driving data inputs directly"
+  }
+]

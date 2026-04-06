@@ -1,0 +1,9 @@
+[
+  {
+    "type": "external",
+    "signal": "state",
+    "module": "spi_master",
+    "confidence": 0.88,
+    "description": "State machine encoding uses non-optimal binary format for FSM"
+  }
+]

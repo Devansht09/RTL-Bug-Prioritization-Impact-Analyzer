@@ -1,0 +1,9 @@
+[
+  {
+    "type": "external",
+    "signal": "rst",
+    "module": "async_fifo",
+    "confidence": 0.95,
+    "description": "Reset domain crossing without synchronization"
+  }
+]

@@ -1,0 +1,9 @@
+[
+  {
+    "type": "external",
+    "signal": "out",
+    "module": "alu_pipeline",
+    "confidence": 0.92,
+    "description": "Pipeline stage missing backpressure control causing potential data loss"
+  }
+]
