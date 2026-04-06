@@ -352,6 +352,9 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg0);color:var(--
           <option value="">— paste your own —</option>
           <option value="simple_alu">simple_alu.v</option>
           <option value="counter_issues">counter_issues.v</option>
+          <option value="ALU_SuperScalar">ALU_SuperScalar.v (Heavy)</option>
+          <option value="Neural_Tensor_Core">Neural_Tensor_Core.v (Massive)</option>
+          <option value="PCIe_Gen5_Controller">PCIe_Gen5_Controller.v (Massive)</option>
         </select>
       </div>
 
@@ -523,6 +526,9 @@ document.querySelectorAll('.tab').forEach(t=>{
     document.getElementById('pane-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='graph'&&lastResult) renderGraph(lastResult.graph_data,lastResult.results);
     if(t.dataset.tab==='ml') loadMLInsights();
+    
+    // Force Plotly to recalculate dimensions to fix overlapping charts after unhiding a tab
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 20);
   });
 });
 
@@ -551,27 +557,44 @@ setupDragDrop('rtl-drop-zone', 'rtl-file', 'rtl-file-name');
 setupDragDrop('ext-drop-zone', 'ext-file', 'ext-file-name');
 
 // ── EXAMPLE LOADER ─────────────────────────────────────────────
-function setExampleFile(content, filename) {
+function setExampleFile(content, filename, inputId, labelId) {
     const file = new File([content], filename, {type: "text/plain"});
     const dt = new DataTransfer();
     dt.items.add(file);
-    document.getElementById('rtl-file').files = dt.files;
-    document.getElementById('rtl-file-name').textContent = `${filename} (Example)`;
-    document.getElementById('rtl-file-name').style.color = 'var(--blue)';
+    document.getElementById(inputId).files = dt.files;
+    document.getElementById(labelId).textContent = `${filename} (Example)`;
+    document.getElementById(labelId).style.color = 'var(--blue)';
 }
 
 document.getElementById('example-select').addEventListener('change',async function(){
   const v=this.value; if(!v)return;
+  
+  // Clear any existing JSON
+  const extDt = new DataTransfer();
+  document.getElementById('ext-file').files = extDt.files;
+  document.getElementById('ext-file-name').textContent = "Click or drag JSON file";
+  document.getElementById('ext-file-name').style.color = 'var(--text1)';
+
   try{
     const r=await fetch(`${API}/examples/${v}.v`);
     const d=await r.json();
-    setExampleFile(d.content||'', `${v}.v`);
+    setExampleFile(d.content||'', `${v}.v`, 'rtl-file', 'rtl-file-name');
+    
+    // Try to magically load the .json counterpart if it exists
+    try {
+      const r_json = await fetch(`${API}/examples/${v}.json`);
+      if(r_json.ok) {
+         const d_json = await r_json.json();
+         setExampleFile(d_json.content||'', `${v}.json`, 'ext-file', 'ext-file-name');
+      }
+    } catch(e) {} // ignore if no json
+    
   }catch(e){
     // fallback: try without extension
     try{
       const r=await fetch(`${API}/examples/${v}`);
       const d=await r.json();
-      setExampleFile(d.content||'', `${v}.v`);
+      setExampleFile(d.content||'', `${v}.v`, 'rtl-file', 'rtl-file-name');
     }catch(e2){showToast('Could not load example','error')}
   }
 });
@@ -711,7 +734,7 @@ function renderDashboard(data){
     textinfo:'percent',textfont:{family:'Inter',size:10,color:'#fff'},
     hovertemplate:'<b>%{label}</b><br>%{value} issues<br>%{percent}<extra></extra>'
   }],{
-    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',dragmode:false,
     showlegend:false,margin:{l:4,r:4,t:4,b:4},
     annotations:[{text:`<b>${s.total}</b>`,x:.5,y:.5,showarrow:false,font:{size:18,color:'#f1f5f9',family:'Inter'}}]
   },{displayModeBar:false,responsive:true});
@@ -726,11 +749,11 @@ function renderDashboard(data){
     marker:{color:bcolors.slice(0,bkeys.length),line:{color:'rgba(255,255,255,.05)',width:1}},
     hovertemplate:'<b>%{x}</b><br>%{y} issues<extra></extra>'
   }],{
-    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',dragmode:false,
     font:{family:'Inter',color:'#64748b',size:9},
     margin:{l:20,r:8,t:4,b:40},
-    xaxis:{gridcolor:'#1e2d47',tickfont:{size:9}},
-    yaxis:{gridcolor:'#1e2d47',tickfont:{size:9}}
+    xaxis:{gridcolor:'#1e2d47',tickfont:{size:9},fixedrange:true},
+    yaxis:{gridcolor:'#1e2d47',tickfont:{size:9},fixedrange:true}
   },{displayModeBar:false,responsive:true});
 
   // Parse info strip
@@ -860,12 +883,12 @@ function renderGraph(graphData,results){
   };
 
   Plotly.newPlot('graph-plot',[...edgeTraces,nodeTrace],{
-    paper_bgcolor:'#0c1120',plot_bgcolor:'#0c1120',
+    paper_bgcolor:'#0c1120',plot_bgcolor:'#0c1120',dragmode:false,
     margin:{l:10,r:10,t:10,b:10},height:440,
-    xaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false},
-    yaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false},
+    xaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false,fixedrange:true},
+    yaxis:{showgrid:false,zeroline:false,showticklabels:false,showline:false,fixedrange:true},
     hoverlabel:{bgcolor:'#172033',bordercolor:'#2a3f60',font:{family:'JetBrains Mono',size:11,color:'#f1f5f9'}}
-  },{displayModeBar:true,scrollZoom:true,responsive:true});
+  },{displayModeBar:false,scrollZoom:false,responsive:true});
 
   const gs=lastResult?.graph_stats||{};
   document.getElementById('graph-stats').innerHTML=`

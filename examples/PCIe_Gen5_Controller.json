@@ -1,0 +1,80 @@
+[
+  {
+    "type": "conflicting_assignment",
+    "signal": "y",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "conflicting_assignment",
+    "signal": "n1",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "feedback_loop",
+    "signal": "n3",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "control_path_corruption",
+    "signal": "state1",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "latch_risk",
+    "signal": "state1",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "latch_risk",
+    "signal": "state2",
+    "module": "design_mega",
+    "severity_hint": "high"
+  },
+  {
+    "type": "conflicting_assignment",
+    "signal": "n4",
+    "module": "design_mega",
+    "severity_hint": "medium"
+  },
+  {
+    "type": "conflicting_assignment",
+    "signal": "n8",
+    "module": "design_mega",
+    "severity_hint": "medium"
+  },
+  {
+    "type": "partial_condition",
+    "signal": "state3",
+    "module": "design_mega",
+    "severity_hint": "medium"
+  },
+  {
+    "type": "redundant_assignment",
+    "signal": "n6",
+    "module": "design_mega",
+    "severity_hint": "medium"
+  },
+  {
+    "type": "undriven_signal",
+    "signal": "floating_signal",
+    "module": "design_mega",
+    "severity_hint": "low"
+  },
+  {
+    "type": "unused_signal",
+    "signal": "junk1",
+    "module": "design_mega",
+    "severity_hint": "low"
+  },
+  {
+    "type": "unused_signal",
+    "signal": "junk2",
+    "module": "design_mega",
+    "severity_hint": "low"
+  }
+]

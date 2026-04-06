@@ -123,7 +123,7 @@ def get_example(filename: str):
     """Return the content of a bundled example file."""
     base = pathlib.Path(__file__).parent.parent / "examples"
     path = base / filename
-    if not path.exists() or not path.suffix == ".v":
+    if not path.exists() or path.suffix not in (".v", ".json"):
         raise HTTPException(status_code=404, detail="Example not found.")
     return {"filename": filename, "content": path.read_text(encoding="utf-8")}
 
