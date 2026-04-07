@@ -4,6 +4,8 @@ An advanced, high-performance offline-capable EDA (Electronic Design Automation)
 
 This platform bridges the gap between traditional linting tools and modern ML-assisted debugging. By analyzing the structural dependencies of hardware code, the analyzer can determine whether a bug is isolated or if it will cascade and cause critical system failures.
 
+**🌐 Access the hosted product:** [https://rtl-bug-prioritization-impact-analy.vercel.app/](https://rtl-bug-prioritization-impact-analy.vercel.app/)
+
 ---
 
 ## ✨ Key Features
