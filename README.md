@@ -44,7 +44,7 @@ Clone the repository and install the required dependencies:
 
 ```bash
 # Clone the repository (if applicable)
-git clone <your-repo-url>
+git clone <[your-repo-url](https://github.com/Devansht09/RTL-Bug-Prioritization-Impact-Analyzer)>
 cd rtl-bug-analyzer
 
 # Setup a virtual environment (Recommended)
